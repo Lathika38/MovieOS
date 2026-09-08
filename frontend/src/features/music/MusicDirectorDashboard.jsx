@@ -567,14 +567,18 @@ export const MusicDirectorDashboard = () => {
                       <p className="text-xs text-slate-400 mt-1">{trk.notes}</p>
 
                       {/* Waveform Visualization */}
-                      <div className="mt-4 p-3 bg-slate-900/90 rounded-2xl border border-slate-800 flex items-center gap-1.5 h-14">
-                        {trk.waveformPeaks?.map((p, i) => (
-                          <div
-                            key={i}
-                            className="flex-1 bg-gradient-to-t from-amber-500 to-purple-400 rounded-full"
-                            style={{ height: `${Math.max(15, p * 100)}%` }}
-                          />
-                        ))}
+                      <div className="mt-4 p-3 bg-slate-900/90 rounded-2xl border border-slate-800 flex items-end gap-1.5 h-14 overflow-hidden relative">
+                        {(trk.waveformPeaks && trk.waveformPeaks.length > 0 ? trk.waveformPeaks : [25, 60, 90, 45, 80, 100, 70, 50, 85, 30, 65, 95, 40, 20]).map((p, i) => {
+                          const val = typeof p === 'number' ? (p > 1 ? p : p * 100) : 50;
+                          const heightPct = Math.min(100, Math.max(15, Math.round(val)));
+                          return (
+                            <div
+                              key={i}
+                              className="flex-1 bg-gradient-to-t from-amber-500 via-purple-500 to-cyan-400 rounded-full transition-all duration-300"
+                              style={{ height: `${heightPct}%`, minHeight: '6px' }}
+                            />
+                          );
+                        })}
                       </div>
 
                       <div className="flex items-center justify-between mt-2.5 text-[10px] text-slate-400 font-mono">

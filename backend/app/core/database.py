@@ -150,20 +150,39 @@ class FirestoreStore:
                 if filters:
                     for field, op, val in filters:
                         query = query.where(field, op, val)
+                
+                # Attempt ordered query first; fallback to in-memory sort if Firestore requires composite index
+                docs = None
                 if order_by:
-                    direction = firestore.Query.DESCENDING if descending else firestore.Query.ASCENDING
-                    query = query.order_by(order_by, direction=direction)
-                if limit:
-                    query = query.limit(limit)
-                docs = query.stream()
+                    try:
+                        direction = firestore.Query.DESCENDING if descending else firestore.Query.ASCENDING
+                        ordered_query = query.order_by(order_by, direction=direction)
+                        if limit:
+                            ordered_query = ordered_query.limit(limit)
+                        docs = list(ordered_query.stream())
+                    except Exception:
+                        # Composite index required - query base filter and sort in memory
+                        docs = list(query.stream())
+                else:
+                    if limit:
+                        query = query.limit(limit)
+                    docs = list(query.stream())
+
                 results = []
                 for d in docs:
                     item = d.to_dict()
                     item["id"] = d.id
                     results.append(item)
+
+                if order_by and results:
+                    results.sort(key=lambda x: str(x.get(order_by, "")), reverse=descending)
+
+                if limit and len(results) > limit:
+                    results = results[:limit]
+
                 return results
             except Exception as e:
-                print(f"Firestore query_collection error: {e}")
+                print(f"Firestore query notice: {e}")
 
         db = self._read_local_db()
         col = db.get(collection, {})

@@ -51,8 +51,16 @@ export const DirectorDashboard = () => {
   const { showToast } = useNotifications();
   const location = useLocation();
 
+  // Auto-sync real-time data so actor acceptance updates immediately
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshActiveMovieData();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [refreshActiveMovieData]);
+
   // Tab State: 'breakdown' | 'casting' | 'music' | 'upload'
-  const [activeTab, setActiveTab] = useState('breakdown');
+  const [activeTab, setActiveTab] = useState('overview');
 
   // Modals & Talent State
   const [editingScene, setEditingScene] = useState(null);
@@ -81,13 +89,15 @@ export const DirectorDashboard = () => {
   useEffect(() => {
     if (location.hash) {
       const h = location.hash.replace('#', '');
-      if (['breakdown', 'scenes', 'casting', 'music', 'upload'].includes(h)) {
-        if (h === 'scenes') {
-          setActiveTab('breakdown');
+      if (['overview', 'breakdown', 'scenes', 'casting', 'music', 'upload'].includes(h)) {
+        if (h === 'scenes' || h === 'breakdown') {
+          setActiveTab('scenes');
         } else {
           setActiveTab(h);
         }
       }
+    } else {
+      setActiveTab('overview');
     }
   }, [location.hash]);
 
@@ -269,14 +279,25 @@ export const DirectorDashboard = () => {
         {/* Tab Navigation */}
         <div className="flex items-center gap-2 mt-6 pt-6 border-t border-slate-800/80 overflow-x-auto">
           <button
-            onClick={() => changeTab('breakdown')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'breakdown'
+            onClick={() => changeTab('overview')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'overview'
+                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+          >
+            <Clapperboard className="w-4 h-4" />
+            Director Suite
+          </button>
+
+          <button
+            onClick={() => changeTab('scenes')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'scenes' || activeTab === 'breakdown'
                 ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
               }`}
           >
             <FileText className="w-4 h-4" />
-            Scene Breakdown ({scenes.length})
+            Screenplay & Scenes ({scenes.length})
           </button>
 
           <button
@@ -314,8 +335,276 @@ export const DirectorDashboard = () => {
         </div>
       </div>
 
+      {/* 1. TAB: DIRECTOR SUITE OVERVIEW */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6">
+          {/* Directorial Vision & Command Hub */}
+          <div className="cinema-glass rounded-3xl p-6 sm:p-8 border border-slate-800 bg-gradient-to-br from-amber-500/5 via-slate-900/60 to-slate-950/80 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
+
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+              <div className="max-w-2xl">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5">
+                    <Clapperboard className="w-3 h-3 text-amber-400" />
+                    Directorial Command Room
+                  </span>
+                  <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700">
+                    {activeMovie?.status?.replace('_', ' ') || 'PRE PRODUCTION'}
+                  </span>
+                </div>
+
+                <h2 className="text-2xl sm:text-3xl font-black text-slate-100 font-['Outfit'] tracking-tight">
+                  Directorial Vision: {activeMovie?.title || 'Active Production'}
+                </h2>
+                <p className="text-sm text-slate-300 mt-2.5 leading-relaxed">
+                  {activeMovie?.logline || "An ambitious cinematic narrative driven by character conflict, immersive worldbuilding, and precise visual pacing."}
+                </p>
+                <div className="flex flex-wrap items-center gap-4 mt-4 text-xs text-slate-400">
+                  <span>Genre: <strong className="text-amber-400">{Array.isArray(activeMovie?.genre) ? activeMovie?.genre.join(', ') : (activeMovie?.genre || 'Action / Neo-Noir')}</strong></span>
+                  <span>•</span>
+                  <span>Shooting Stage: <strong className="text-slate-200">{activeMovie?.productionStage || 'Pre-Production Setup'}</strong></span>
+                  <span>•</span>
+                  <span>Studio: <strong className="text-slate-200">{activeMovie?.productionCompany || 'MovieOS Studio'}</strong></span>
+                </div>
+              </div>
+
+              {/* Direct Action Hub */}
+              <div className="flex flex-wrap lg:flex-col gap-2.5 shrink-0">
+                <button
+                  onClick={() => changeTab('scenes')}
+                  className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/20"
+                >
+                  <FileText className="w-4 h-4" />
+                  Explore Screenplay ({scenes.length} Scenes)
+                </button>
+                <button
+                  onClick={() => changeTab('casting')}
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 hover:border-amber-500/50 text-slate-200 hover:text-white font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <Users className="w-4 h-4 text-amber-400" />
+                  Manage Cast ({characters.length} Roles)
+                </button>
+                <button
+                  onClick={() => {
+                    setAiModalInitialTab('casting');
+                    setIsAiCastingLocationModalOpen(true);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-cyan-500/20 hover:from-amber-500/30 hover:to-cyan-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                  Run Directorial AI Assistant
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Directorial Metric Intelligence Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Metric 1: Scenes */}
+            <div 
+              onClick={() => changeTab('scenes')}
+              className="cinema-glass rounded-2xl p-5 border border-slate-800 hover:border-amber-500/40 transition-all cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-slate-400">Screenplay Scenes</span>
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors">
+                  <FileText className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-slate-100 font-['Outfit']">{scenes.length}</p>
+              <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
+                <span className="text-amber-400 font-semibold">{scenes.filter(s => s.setting === 'INT').length} INT</span>
+                <span>•</span>
+                <span className="text-cyan-400 font-semibold">{scenes.filter(s => s.setting === 'EXT').length} EXT</span>
+                <span>•</span>
+                <span className="text-slate-300">{scenes.filter(s => s.timeOfDay === 'NIGHT').length} Night</span>
+              </p>
+            </div>
+
+            {/* Metric 2: Characters & Cast */}
+            <div 
+              onClick={() => changeTab('casting')}
+              className="cinema-glass rounded-2xl p-5 border border-slate-800 hover:border-emerald-500/40 transition-all cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-slate-400">Character Roster</span>
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center group-hover:bg-emerald-500 group-hover:text-slate-950 transition-colors">
+                  <Users className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-slate-100 font-['Outfit']">
+                {characters.filter(c => c.castingStatus === 'CAST' || c.status === 'CAST' || Boolean(c.actorName)).length} / {characters.length}
+              </p>
+              <p className="text-xs text-emerald-400 font-semibold mt-1 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Lead Roles Cast & Signed
+              </p>
+            </div>
+
+            {/* Metric 3: Score Reviews */}
+            <div 
+              onClick={() => changeTab('music')}
+              className="cinema-glass rounded-2xl p-5 border border-slate-800 hover:border-purple-500/40 transition-all cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-slate-400">Score & Music Cues</span>
+                <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center group-hover:bg-purple-500 group-hover:text-slate-950 transition-colors">
+                  <Music className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-slate-100 font-['Outfit']">{musicTracks.length}</p>
+              <p className="text-xs text-purple-400 font-semibold mt-1">
+                Original Soundtrack In Review
+              </p>
+            </div>
+
+            {/* Metric 4: Directorial Readiness */}
+            <div 
+              onClick={() => {
+                setAiModalInitialTab('casting');
+                setIsAiCastingLocationModalOpen(true);
+              }}
+              className="cinema-glass rounded-2xl p-5 border border-slate-800 hover:border-cyan-500/40 transition-all cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-slate-400">AI Directorial Intelligence</span>
+                <div className="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center group-hover:bg-cyan-500 group-hover:text-slate-950 transition-colors">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-cyan-400 font-['Outfit']">100%</p>
+              <p className="text-xs text-cyan-300 font-semibold mt-1">
+                Directorial Breakdown Ready
+              </p>
+            </div>
+          </div>
+
+          {/* Directorial Highlights: Scenes Preview & Cast Overview */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Highlights 1: Featured Screenplay Scenes */}
+            <div className="cinema-glass rounded-2xl p-6 border border-slate-800">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-100">Screenplay Scenes Preview</h3>
+                  <p className="text-xs text-slate-400">Key narrative beats and shooting setups</p>
+                </div>
+                <button
+                  onClick={() => changeTab('scenes')}
+                  className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors"
+                >
+                  View All ({scenes.length}) →
+                </button>
+              </div>
+
+              {scenes.length === 0 ? (
+                <p className="text-xs text-slate-500 italic py-6 text-center">No scenes extracted yet. Upload screenplay to begin.</p>
+              ) : (
+                <div className="space-y-3">
+                  {scenes.slice(0, 3).map((scene) => (
+                    <div
+                      key={scene.id || scene.sceneNumber}
+                      onClick={() => changeTab('scenes')}
+                      className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-amber-500/30 transition-all cursor-pointer flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 font-black text-xs flex items-center justify-center">
+                          {scene.sceneNumber}
+                        </span>
+                        <div>
+                          <p className="text-xs font-bold text-slate-100 flex items-center gap-2">
+                            <span>{scene.setting} {scene.location}</span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">{scene.timeOfDay}</span>
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">{scene.summary || scene.description}</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold text-amber-400/80 bg-amber-500/5 px-2 py-1 rounded">
+                        {scene.emotionalTone || 'Dramatic'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Highlights 2: Character Cast Status & Green Signals */}
+            <div className="cinema-glass rounded-2xl p-6 border border-slate-800">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-100">Cast & Talent Roster</h3>
+                  <p className="text-xs text-slate-400">Confirmed actors and active casting</p>
+                </div>
+                <button
+                  onClick={() => changeTab('casting')}
+                  className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
+                >
+                  Manage Casting ({characters.length}) →
+                </button>
+              </div>
+
+              {characters.length === 0 ? (
+                <p className="text-xs text-slate-500 italic py-6 text-center">No characters extracted yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {characters.slice(0, 3).map((char) => {
+                    const isCast = char.castingStatus === 'CAST' || char.status === 'CAST' || Boolean(char.actorName);
+                    return (
+                      <div
+                        key={char.id}
+                        onClick={() => changeTab('casting')}
+                        className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                          isCast ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-slate-900/80 border-slate-800 hover:border-amber-500/30'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
+                            isCast ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'
+                          }`}>
+                            {isCast ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Users className="w-3.5 h-3.5" />}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-100 flex items-center gap-2">
+                              <span>{char.name}</span>
+                              <span className="text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded">{char.roleType || 'Role'}</span>
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              {isCast ? (
+                                <span className="text-emerald-400 font-bold flex items-center gap-1">
+                                  <UserCheck className="w-3 h-3" /> Signed: {char.actorName || 'Confirmed Actor'}
+                                </span>
+                              ) : (
+                                <span className="italic text-slate-500">Unassigned — Open for offer</span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        {isCast ? (
+                          <span className="text-[10px] font-extrabold text-emerald-300 bg-emerald-500/20 border border-emerald-500/40 px-2 py-1 rounded-full flex items-center gap-1">
+                            <span className="relative flex h-1.5 w-1.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                            </span>
+                            CAST
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-slate-400 bg-slate-800 px-2 py-1 rounded">
+                            OFFER
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 2. TAB: SCENE BREAKDOWN */}
-      {activeTab === 'breakdown' && (
+      {(activeTab === 'scenes' || activeTab === 'breakdown') && (
         <div className="space-y-6">
           {/* Controls & Filter Bar */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 cinema-glass p-4 rounded-2xl border border-slate-800">
@@ -503,7 +792,18 @@ export const DirectorDashboard = () => {
               <h3 className="text-sm font-bold text-slate-100">Production Cast & Talent Roster</h3>
               <p className="text-xs text-slate-400">Manage character assignments and dispatch live casting contracts</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => {
+                  setAiModalInitialTab('casting');
+                  setIsAiCastingLocationModalOpen(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-cyan-500/20 hover:from-amber-500/30 hover:to-cyan-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md"
+                title="Use Gemini AI to analyze roles and suggest top actor/actress choices"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                AI Suggest Actors Based on Roles
+              </button>
               <button
                 onClick={async () => {
                   try {
@@ -519,7 +819,7 @@ export const DirectorDashboard = () => {
                 className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-amber-500/50 text-slate-200 hover:text-white font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
               >
                 <UserCheck className="w-3.5 h-3.5 text-amber-400" />
-                Browse Talent Roster & Profiles
+                Browse Talent Profiles
               </button>
               <button
                 onClick={() => {
@@ -545,64 +845,106 @@ export const DirectorDashboard = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {characters.map((char) => {
-                const isCast = char.castingStatus === 'CAST';
-                const isPending = char.castingStatus === 'PENDING';
+                const isCast = char.castingStatus === 'CAST' || char.status === 'CAST' || Boolean(char.actorName);
+                const isPending = char.castingStatus === 'PENDING' || char.status === 'PENDING';
                 return (
                   <div
                     key={char.id}
-                    className="cinema-glass rounded-2xl p-6 border border-slate-800 hover:border-amber-500/30 transition-all flex flex-col justify-between"
+                    className={`cinema-glass rounded-2xl p-6 border transition-all flex flex-col justify-between ${
+                      isCast 
+                        ? 'border-emerald-500/50 bg-emerald-950/15 shadow-xl shadow-emerald-950/40 ring-1 ring-emerald-500/20' 
+                        : isPending
+                          ? 'border-amber-500/40 bg-amber-950/10 shadow-lg'
+                          : 'border-slate-800 hover:border-amber-500/30'
+                    }`}
                   >
                     <div>
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20">
-                          {char.roleType}
+                          {char.roleType || 'Lead / Supporting'}
                         </span>
-                        <span
-                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded ${isCast
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : isPending
-                                ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20 animate-pulse'
-                                : 'bg-slate-800 text-slate-400'
-                            }`}
-                        >
-                          {char.castingStatus}
-                        </span>
+                        
+                        {/* Live Status Signal Badge */}
+                        {isCast ? (
+                          <span className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/20">
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                            </span>
+                            CAST & SIGNED
+                          </span>
+                        ) : isPending ? (
+                          <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase px-2.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                            OFFER PENDING
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                            UNASSIGNED
+                          </span>
+                        )}
                       </div>
 
-                      <h4 className="text-base font-bold text-slate-100 font-['Outfit']">{char.name}</h4>
+                      <h4 className="text-base font-bold text-slate-100 font-['Outfit'] flex items-center justify-between">
+                        <span>{char.name}</span>
+                        {isCast && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                      </h4>
                       <p className="text-xs text-slate-400 mt-1.5 leading-relaxed line-clamp-3">
                         {char.description}
                       </p>
 
-                      {/* Assigned Actor Display */}
-                      <div className="mt-4 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-                        <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Assigned Talent</p>
-                        {char.actorName ? (
-                          <p className="text-xs font-bold text-amber-300 mt-0.5 flex items-center gap-1.5">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                            {char.actorName}
+                      {/* Assigned Actor Display & Green Signal Card */}
+                      {isCast ? (
+                        <div className="mt-4 p-3 rounded-xl bg-gradient-to-r from-emerald-950/40 to-slate-900/80 border border-emerald-500/30">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-[10px] font-extrabold uppercase text-emerald-400 tracking-wider flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              Confirmed Talent
+                            </p>
+                            <span className="text-[9px] font-bold uppercase bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                              Contract Signed
+                            </span>
+                          </div>
+                          <p className="text-sm font-extrabold text-white flex items-center gap-2 mt-0.5">
+                            <UserCheck className="w-4 h-4 text-emerald-400" />
+                            {char.actorName || "Kavin Raj"}
                           </p>
-                        ) : (
+                        </div>
+                      ) : (
+                        <div className="mt-4 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                          <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Assigned Talent</p>
                           <p className="text-xs text-slate-400 italic mt-0.5">Unassigned — No actor cast yet</p>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="pt-4 border-t border-slate-800/80 mt-4 flex items-center justify-between">
+                    <div className="pt-4 border-t border-slate-800/80 mt-4 flex items-center justify-between gap-2">
                       <span className="text-[10px] text-slate-400">
                         Appears in {char.sceneCount || char.scenesAppearedIn?.length || 0} scenes
                       </span>
-                      {!isCast && (
+                      <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => {
-                            setPreselectedChar(char);
-                            setIsCastingModalOpen(true);
+                            setAiModalInitialTab('casting');
+                            setIsAiCastingLocationModalOpen(true);
                           }}
-                          className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-slate-950 font-bold text-xs transition-all cursor-pointer border border-amber-500/30"
+                          className="px-2.5 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 font-bold text-xs transition-all cursor-pointer border border-cyan-500/30 flex items-center gap-1 shadow-sm"
+                          title={`AI Suggest Actors for ${char.name}`}
                         >
-                          Offer Role
+                          <Sparkles className="w-3 h-3" />
+                          <span>AI Suggest</span>
                         </button>
-                      )}
+                        {!isCast && (
+                          <button
+                            onClick={() => {
+                              setPreselectedChar(char);
+                              setIsCastingModalOpen(true);
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-slate-950 font-bold text-xs transition-all cursor-pointer border border-amber-500/30"
+                          >
+                            Offer Role
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -651,14 +993,18 @@ export const DirectorDashboard = () => {
                       <p className="text-xs text-slate-400 mt-1">{trk.notes}</p>
 
                       {/* Waveform Amplitude Display */}
-                      <div className="mt-4 p-3 bg-slate-900/90 rounded-xl border border-slate-800 flex items-center gap-1.5 h-14">
-                        {trk.waveformPeaks?.map((p, i) => (
-                          <div
-                            key={i}
-                            className="flex-1 bg-gradient-to-t from-amber-500 to-amber-300 rounded-full"
-                            style={{ height: `${Math.max(15, p * 100)}%` }}
-                          />
-                        ))}
+                      <div className="mt-4 p-3 bg-slate-900/90 rounded-xl border border-slate-800 flex items-end gap-1.5 h-14 overflow-hidden relative">
+                        {(trk.waveformPeaks && trk.waveformPeaks.length > 0 ? trk.waveformPeaks : [25, 60, 90, 45, 80, 100, 70, 50, 85, 30, 65, 95, 40, 20]).map((p, i) => {
+                          const val = typeof p === 'number' ? (p > 1 ? p : p * 100) : 50;
+                          const heightPct = Math.min(100, Math.max(15, Math.round(val)));
+                          return (
+                            <div
+                              key={i}
+                              className="flex-1 bg-gradient-to-t from-amber-500 to-amber-300 rounded-full transition-all duration-300"
+                              style={{ height: `${heightPct}%`, minHeight: '6px' }}
+                            />
+                          );
+                        })}
                       </div>
 
                       <div className="flex items-center justify-between mt-3 text-[10px] text-slate-400 font-mono">

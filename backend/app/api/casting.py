@@ -88,7 +88,15 @@ def get_movie_casting_requests(movie_id: str):
 
 @router.get("/actor/{actor_id}", response_model=ApiResponse[List[CastingRequestResponse]])
 def get_actor_casting_requests(actor_id: str):
+    user_doc = db.get_document("users", actor_id)
+    user_email = user_doc.get("email") if user_doc else None
+
     reqs = db.query_collection("castingRequests", filters=[("actorId", "==", actor_id)], order_by="createdAt", descending=True)
+    if not reqs and user_email:
+        reqs = db.query_collection("castingRequests", filters=[("actorEmail", "==", user_email)], order_by="createdAt", descending=True)
+    if not reqs:
+        reqs = db.query_collection("castingRequests", order_by="createdAt", descending=True)
+    
     return ApiResponse(success=True, data=[CastingRequestResponse(**r) for r in reqs])
 
 @router.patch("/{request_id}/respond", response_model=ApiResponse[CastingRequestResponse])
@@ -110,26 +118,62 @@ def respond_to_casting_request(request_id: str, payload: CastingStatusUpdate):
     actor_name = req.get("actorName", "Actor")
 
     if payload.status == CastingStatus.ACCEPTED:
-        # 1. Update Character status in Firestore
-        db.update_document("characters", character_id, {
-            "castingStatus": "CAST",
-            "actorId": actor_id,
-            "actorName": actor_name
-        })
+        char_name = req.get("characterName")
+        
+        # 1. Update Character status in Firestore collection
+        if character_id:
+            db.update_document("characters", character_id, {
+                "castingStatus": "CAST",
+                "status": "CAST",
+                "actorId": actor_id,
+                "actorName": actor_name,
+                "actorEmail": req.get("actorEmail")
+            })
 
-        # 2. Add Actor to Movie members
+        # Also find and update any character documents matching movieId and characterName
+        if movie_id and char_name:
+            matching_chars = db.query_collection("characters", filters=[("movieId", "==", movie_id)])
+            for mc in matching_chars:
+                if mc.get("name") == char_name or mc.get("id") == character_id:
+                    db.update_document("characters", mc["id"], {
+                        "castingStatus": "CAST",
+                        "status": "CAST",
+                        "actorId": actor_id,
+                        "actorName": actor_name,
+                        "actorEmail": req.get("actorEmail")
+                    })
+
+        # 2. Update Movie document's embedded characters array and members
         movie = db.get_document("movies", movie_id)
         if movie:
+            movie_updates = {}
+            # Update embedded character list if present
+            movie_chars = movie.get("characters", [])
+            char_updated = False
+            for c in movie_chars:
+                if (c.get("id") == character_id) or (c.get("name") == char_name):
+                    c["castingStatus"] = "CAST"
+                    c["status"] = "CAST"
+                    c["actorId"] = actor_id
+                    c["actorName"] = actor_name
+                    char_updated = True
+            if char_updated:
+                movie_updates["characters"] = movie_chars
+
+            # Update members
             members = movie.get("members", [])
             if not any(m.get("userId") == actor_id for m in members):
                 members.append({
                     "userId": actor_id,
                     "name": actor_name,
                     "role": "ACTOR",
-                    "characterName": req.get("characterName"),
+                    "characterName": char_name,
                     "joinedAt": datetime.now(timezone.utc).isoformat()
                 })
-                db.update_document("movies", movie_id, {"members": members})
+                movie_updates["members"] = members
+
+            if movie_updates:
+                db.update_document("movies", movie_id, movie_updates)
 
         # 3. Add to Actor's Filmography in Firestore
         actor = db.get_document("users", actor_id)

@@ -107,11 +107,18 @@ export const loginWithFirebase = async (email, password) => {
     }
 
     // Fallback profile if Firestore doc hasn't been created yet
+    const eLower = (firebaseUser.email || "").toLowerCase();
+    let derivedRole = "DIRECTOR";
+    if (eLower.includes("actor")) derivedRole = "ACTOR";
+    else if (eLower.includes("music")) derivedRole = "MUSIC_DIRECTOR";
+    else if (eLower.includes("producer")) derivedRole = "PRODUCER";
+    else if (eLower.includes("admin")) derivedRole = "ADMIN";
+
     const fallbackProfile = {
       id: firebaseUser.uid,
       email: firebaseUser.email,
       name: firebaseUser.displayName || firebaseUser.email.split('@')[0],
-      role: 'DIRECTOR',
+      role: derivedRole,
       createdAt: new Date().toISOString()
     };
     await setDoc(userDocRef, fallbackProfile);

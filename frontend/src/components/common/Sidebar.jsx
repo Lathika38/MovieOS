@@ -37,7 +37,7 @@ export const Sidebar = ({ isMobileOpen, onCloseMobile }) => {
           bgAccent: 'from-amber-500/20 to-amber-500/5',
           borderAccent: 'border-amber-500/30',
           items: [
-            { label: 'Director Suite', path: '/director#breakdown', icon: Clapperboard, defaultTab: true },
+            { label: 'Director Suite', path: '/director#overview', icon: Clapperboard, defaultTab: true },
             { label: 'Screenplay & Scenes', path: '/director#scenes', icon: FileText },
             { label: 'Casting Dispatch', path: '/director#casting', icon: Users },
             { label: 'Score & Music Reviews', path: '/director#music', icon: Music },

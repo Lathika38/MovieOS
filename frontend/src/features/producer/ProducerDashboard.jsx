@@ -516,9 +516,9 @@ export const ProducerDashboard = () => {
 
   return (
     <div className="space-y-8 animate-in fade-in">
-      {/* 1. Producer Header & Key Metrics */}
-      <div className="cinema-glass rounded-3xl p-6 sm:p-8 border border-amber-500/20 shadow-2xl relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            {/* 1. Producer Header & Key Metrics */}
+      <div className="cinema-glass rounded-3xl p-6 sm:p-8 border border-amber-500/20 shadow-2xl relative">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-5 border-b border-slate-800/80">
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[10px] uppercase tracking-wider font-bold text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
@@ -530,24 +530,49 @@ export const ProducerDashboard = () => {
               {activeMovie.title}
             </h1>
             <p className="text-xs text-slate-300 max-w-2xl mt-1.5">
-              Production Company: <strong className="text-amber-400">{activeMovie.productionCompany || 'Apex Pictures'}</strong> • Status: <span className="uppercase text-cyan-400 font-bold">{activeMovie.status}</span>
+              Production Company: <strong className="text-amber-400">{activeMovie.productionCompany || 'MovieOS Studios'}</strong> • Status: <span className="uppercase text-cyan-400 font-bold">{activeMovie.status}</span>
             </p>
           </div>
 
-          {/* Quick Financial Overview */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="bg-slate-900/80 border border-slate-800 px-4 py-3 rounded-2xl text-center min-w-[110px]">
+          {/* Quick Financial Overview Badges */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="bg-slate-900/90 border border-slate-800 px-4 py-2.5 rounded-2xl text-center min-w-[105px] shadow-sm">
               <p className="text-[10px] uppercase font-bold text-slate-400">Total Budget</p>
               <p className="text-lg font-black text-amber-400 font-['Outfit']">${(totalBudget / 1e6).toFixed(1)}M</p>
             </div>
-            <div className="bg-slate-900/80 border border-slate-800 px-4 py-3 rounded-2xl text-center min-w-[110px]">
+            <div className="bg-slate-900/90 border border-slate-800 px-4 py-2.5 rounded-2xl text-center min-w-[105px] shadow-sm">
               <p className="text-[10px] uppercase font-bold text-slate-400">Capital Spent</p>
               <p className="text-lg font-black text-emerald-400 font-['Outfit']">${(totalSpent / 1e6).toFixed(2)}M</p>
             </div>
-            <div className="bg-slate-900/80 border border-slate-800 px-4 py-3 rounded-2xl text-center min-w-[90px]">
+            <div className="bg-slate-900/90 border border-slate-800 px-4 py-2.5 rounded-2xl text-center min-w-[90px] shadow-sm">
               <p className="text-[10px] uppercase font-bold text-slate-400">Burn Rate</p>
               <p className="text-lg font-black text-cyan-400 font-['Outfit']">{burnPct}%</p>
             </div>
+          </div>
+        </div>
+
+        {/* Action Toolbar Row - Fully visible, responsive and wrapping */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-4">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={handleRunAiFixProducerData}
+              disabled={aiFixing}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-cyan-400 hover:brightness-110 text-slate-950 font-black text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/20 disabled:opacity-50"
+              title="Producer AI Assistant: Analyze movie details and fix schedules, budget, ledger & departments"
+            >
+              <Sparkles className="w-4 h-4 text-slate-950" />
+              <span>{aiFixing ? "AI Optimizing Data..." : "Producer AI: Fix Schedules & Ledger"}</span>
+            </button>
+
+            <button
+              onClick={() => setIsAnnouncementModalOpen(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-amber-500/30 shadow-sm"
+              title="Dispatch Announcement to Crew"
+            >
+              <Megaphone className="w-4 h-4" />
+              <span>Announcement</span>
+            </button>
+
             <button
               onClick={async () => {
                 try {
@@ -562,45 +587,28 @@ export const ProducerDashboard = () => {
               className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-200 hover:text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
             >
               <Users className="w-4 h-4 text-cyan-400" />
-              Browse Talent Profiles
+              <span>Browse Talent Profiles</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsEditMovieModalOpen(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-amber-500/30 shadow-sm"
+              title="Edit Production Details"
+            >
+              <Pencil className="w-4 h-4" />
+              <span>Edit Movie</span>
             </button>
 
-            {/* AI Assistant, Edit, Announcement & Delete Action Pills */}
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-              <button
-                onClick={handleRunAiFixProducerData}
-                disabled={aiFixing}
-                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-cyan-400 hover:brightness-110 text-slate-950 font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-lg shadow-amber-500/20 disabled:opacity-50"
-                title="Producer AI Assistant: Analyze movie details and fix schedules, budget, ledger & departments"
-              >
-                <Sparkles className="w-4 h-4 text-slate-950" />
-                <span>{aiFixing ? "AI Fixing Data..." : "🤖 Producer AI: Fix Schedules & Ledger"}</span>
-              </button>
-              <button
-                onClick={() => setIsAnnouncementModalOpen(true)}
-                className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-amber-500/30 shadow-md"
-                title="Dispatch Announcement to Crew"
-              >
-                <Megaphone className="w-3.5 h-3.5" />
-                <span>Announcement</span>
-              </button>
-              <button
-                onClick={() => setIsEditMovieModalOpen(true)}
-                className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-amber-500/30 shadow-md"
-                title="Edit Production Details"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-                <span>Edit</span>
-              </button>
-              <button
-                onClick={handleDeleteProduction}
-                className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-rose-500/20 text-rose-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-rose-500/30 shadow-md"
-                title="Delete Production"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete</span>
-              </button>
-            </div>
+            <button
+              onClick={handleDeleteProduction}
+              className="px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-rose-500/20 text-rose-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-rose-500/30 shadow-sm"
+              title="Delete Production"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Delete</span>
+            </button>
           </div>
         </div>
 
