@@ -254,9 +254,25 @@ def ai_generate_and_fix_producer_data(movie_id: str):
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    if not parsed or not isinstance(parsed, dict):
-        parsed = {
-            "schedules": [
+    if not parsed or not isinstance(parsed, dict) or not parsed.get("schedules"):
+        generated_scheds = []
+        if scenes:
+            for idx, sc in enumerate(scenes[:4]):
+                loc = sc.get("location") or ("Main Soundstage A" if sc.get("setting") == "INT" else "Exterior Location Set")
+                is_ext = sc.get("setting") == "EXT"
+                generated_scheds.append({
+                    "title": f"Day {idx+1}: Scene {sc.get('sceneNumber', idx+1)} — {sc.get('heading', 'Shoot')}",
+                    "shootingDate": today,
+                    "startTime": "07:30" if is_ext else "08:30",
+                    "endTime": "18:00" if is_ext else "19:30",
+                    "location": loc,
+                    "setting": sc.get("setting", "INT"),
+                    "weatherRiskLevel": "MEDIUM" if is_ext else "LOW",
+                    "status": "SCHEDULED",
+                    "notes": f"Filming Scene #{sc.get('sceneNumber', idx+1)}: {sc.get('synopsis', 'Principal photography')[:80]}."
+                })
+        else:
+            generated_scheds = [
                 {
                     "title": f"Day 1: Principal Photography & Scene 1-3 — {title}",
                     "shootingDate": today,
@@ -279,7 +295,10 @@ def ai_generate_and_fix_producer_data(movie_id: str):
                     "status": "SCHEDULED",
                     "notes": "Exterior shooting day. Track weather and wind safety telemetry."
                 }
-            ],
+            ]
+
+        parsed = {
+            "schedules": generated_scheds,
             "departments": [
                 {"name": "Camera & Grip", "headOfDepartment": "Marcus Vance", "budgetAllocated": total_budget * 0.35, "budgetSpent": total_budget * 0.08, "teamCount": 12, "status": "ACTIVE", "taskSummary": "Alexa 35 anamorphic package & dolly setup"},
                 {"name": "Sound & Audio", "headOfDepartment": "Elena Rostova", "budgetAllocated": total_budget * 0.15, "budgetSpent": total_budget * 0.03, "teamCount": 6, "status": "ACTIVE", "taskSummary": "Multi-channel wireless boom & lavalier arrays"},

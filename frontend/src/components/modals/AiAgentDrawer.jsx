@@ -42,12 +42,14 @@ export const AiAgentDrawer = ({ isOpen, onClose }) => {
     switch (role) {
       case 'DIRECTOR':
         return [
+          "Suggest suitable filming locations for script scenes",
           "Suggest camera lenses & shot movement for high-tension scene",
           "Analyze dramatic subtext and actor blocking notes",
           "Give casting recommendations for lead antagonist"
         ];
       case 'PRODUCER':
         return [
+          "Analyze script scenes and suggest cost-effective filming locations & permits",
           "Analyze schedule risks and weather threats for exterior shoots",
           "Forecast budget variance and departmental burn rate",
           "Recommend logistics contingency plan for filming delay"
@@ -76,12 +78,14 @@ export const AiAgentDrawer = ({ isOpen, onClose }) => {
     setLoading(true);
     setResponse(null);
 
+    const isLocQuery = query.toLowerCase().includes('location') || query.toLowerCase().includes('scout') || query.toLowerCase().includes('place');
+
     try {
       let res;
       if (role === 'DIRECTOR') {
-        res = await aiApi.runDirectorAi(activeMovie.id, query, null, null, 'SCRIPT_ANALYSIS');
+        res = await aiApi.runDirectorAi(activeMovie.id, query, null, null, isLocQuery ? 'LOCATION_SUGGESTION' : 'SCRIPT_ANALYSIS');
       } else if (role === 'PRODUCER') {
-        res = await aiApi.runProducerAi(activeMovie.id, query, true, 'SCHEDULE_RISK');
+        res = await aiApi.runProducerAi(activeMovie.id, query, true, isLocQuery ? 'LOCATION_SUGGESTION' : 'SCHEDULE_RISK');
       } else if (role === 'ACTOR') {
         const charId = characters[0]?.id || null;
         res = await aiApi.runActorAi(activeMovie.id, charId, query, null, 'SUBTEXT_ANALYSIS');
@@ -97,6 +101,8 @@ export const AiAgentDrawer = ({ isOpen, onClose }) => {
       setLoading(false);
     }
   };
+
+  const locationSuggestions = response?.structuredInsights?.locationSuggestions || [];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex justify-end">
@@ -190,22 +196,61 @@ export const AiAgentDrawer = ({ isOpen, onClose }) => {
                 {response.analysis}
               </div>
 
+              {/* AI Location Suggestions Cards */}
+              {locationSuggestions.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    AI Suggested Shooting Locations ({locationSuggestions.length})
+                  </h4>
+                  <div className="space-y-3">
+                    {locationSuggestions.slice(0, 4).map((loc, idx) => (
+                      <div key={idx} className="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 hover:border-cyan-500/40 transition-all space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-100">{loc.locationName || loc.suggestedPlace}</span>
+                          <span className="text-[10px] font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                            {loc.settingType || 'EXT'}
+                          </span>
+                        </div>
+                        {loc.suggestedPlace && (
+                          <p className="text-[11px] text-amber-400 font-semibold">📍 {loc.suggestedPlace}</p>
+                        )}
+                        {loc.lightingAdvice && (
+                          <p className="text-[10px] text-slate-300">💡 <strong>Lighting:</strong> {loc.lightingAdvice}</p>
+                        )}
+                        {loc.permitRequirements && (
+                          <p className="text-[10px] text-slate-300">🛡️ <strong>Permit:</strong> {loc.permitRequirements}</p>
+                        )}
+                        {loc.estimatedRentalRate && (
+                          <p className="text-[10px] text-emerald-400 font-semibold">💰 <strong>Est. Rate:</strong> {loc.estimatedRentalRate}</p>
+                        )}
+                        {loc.matchedSceneNumbers && loc.matchedSceneNumbers.length > 0 && (
+                          <p className="text-[10px] text-slate-400">🎬 Matched Scenes: {loc.matchedSceneNumbers.map(n => `#${n}`).join(', ')}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Structured Insights Key-Value Cards */}
-              {response.structuredInsights && Object.keys(response.structuredInsights).length > 0 && (
+              {response.structuredInsights && Object.keys(response.structuredInsights).filter(k => k !== 'locationSuggestions' && k !== 'castingSuggestions' && k !== 'sceneBudgetBreakdown' && k !== 'marketRateRatesTable').length > 0 && (
                 <div>
                   <h4 className="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-2.5">
                     Structured Production Insights
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {Object.entries(response.structuredInsights).map(([key, val]) => (
-                      <div key={key} className="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
-                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                          {key.replace(/([A-Z])/g, ' $1')}
-                        </p>
-                        <p className="text-xs font-semibold text-slate-100 mt-0.5">
-                          {Array.isArray(val) ? val.join(', ') : String(val)}
-                        </p>
-                      </div>
+                    {Object.entries(response.structuredInsights)
+                      .filter(([key]) => key !== 'locationSuggestions' && key !== 'castingSuggestions' && key !== 'sceneBudgetBreakdown' && key !== 'marketRateRatesTable')
+                      .map(([key, val]) => (
+                        <div key={key} className="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                          <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                            {key.replace(/([A-Z])/g, ' $1')}
+                          </p>
+                          <p className="text-xs font-semibold text-slate-100 mt-0.5 truncate">
+                            {Array.isArray(val) ? val.join(', ') : (typeof val === 'object' ? JSON.stringify(val).slice(0, 60) : String(val))}
+                          </p>
+                        </div>
                     ))}
                   </div>
                 </div>

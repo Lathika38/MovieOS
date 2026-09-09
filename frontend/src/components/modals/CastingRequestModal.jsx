@@ -26,7 +26,9 @@ export const CastingRequestModal = ({ isOpen, onClose, preselectedCharacter }) =
     if (isOpen) {
       authApi.getActors().then(data => {
         setActors(data || []);
-        if (data && data.length > 0 && !selectedActorId) {
+        if (preselectedCharacter?.suggestedActorId) {
+          setSelectedActorId(preselectedCharacter.suggestedActorId);
+        } else if (data && data.length > 0 && !selectedActorId) {
           setSelectedActorId(data[0].id);
         }
       }).catch(console.error);

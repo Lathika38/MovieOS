@@ -69,6 +69,7 @@ export const DirectorDashboard = () => {
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
   const [isAiCastingLocationModalOpen, setIsAiCastingLocationModalOpen] = useState(false);
   const [aiModalInitialTab, setAiModalInitialTab] = useState('casting');
+  const [preselectedSceneNumberForAi, setPreselectedSceneNumberForAi] = useState(null);
 
   const [talentList, setTalentList] = useState([]);
   const [selectedTalentForProfile, setSelectedTalentForProfile] = useState(null);
@@ -753,6 +754,28 @@ export const DirectorDashboard = () => {
                       </div>
                     </div>
 
+                    {/* Location & AI Scout Action Row */}
+                    <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                        <span className="text-[11px] text-slate-300 truncate">
+                          Location: <strong className="text-slate-100">{scene.location || 'Studio Stage'}</strong>
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setAiModalInitialTab('locations');
+                          setPreselectedSceneNumberForAi(scene.sceneNumber);
+                          setIsAiCastingLocationModalOpen(true);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 font-bold text-[10px] flex items-center gap-1 border border-cyan-500/30 transition-colors cursor-pointer shrink-0"
+                        title={`AI Suggest Locations specifically for Scene #${scene.sceneNumber}`}
+                      >
+                        <Sparkles className="w-3 h-3 text-cyan-400" />
+                        <span>AI Location Scout</span>
+                      </button>
+                    </div>
+
                     {/* Tone & Music Cue */}
                     <div className="flex items-center justify-between text-[10px] text-slate-400">
                       <span>Tone: <strong className="text-slate-200">{scene.emotionalTone}</strong></span>
@@ -1173,12 +1196,29 @@ export const DirectorDashboard = () => {
       {/* AI Roles & Casting + Location Suggestions Modal */}
       <AiCastingAndLocationModal
         isOpen={isAiCastingLocationModalOpen}
-        onClose={() => setIsAiCastingLocationModalOpen(false)}
+        onClose={() => {
+          setIsAiCastingLocationModalOpen(false);
+          setPreselectedSceneNumberForAi(null);
+        }}
         initialTab={aiModalInitialTab}
         movieId={activeMovie?.id}
         movieTitle={activeMovie?.title}
-        onDispatchCasting={(actor) => {
-          setPreselectedChar(null);
+        scenes={scenes}
+        role="DIRECTOR"
+        preselectedSceneNumber={preselectedSceneNumberForAi}
+        onApplyLocationSuccess={refreshActiveMovieData}
+        onDispatchCasting={(actor, roleObj) => {
+          const charName = roleObj?.characterName || 'Lead Role';
+          const matchedChar = characters.find(c => c.name === charName || c.id === roleObj?.characterId);
+          setPreselectedChar({
+            id: matchedChar?.id || roleObj?.characterId || 'CHR-LEAD',
+            name: charName,
+            description: roleObj?.requiredTraits || matchedChar?.description || 'Key role in production.',
+            roleType: roleObj?.roleArchetype?.includes('HEROINE') ? 'Female Lead' : (roleObj?.roleArchetype?.includes('VILLAIN') ? 'Antagonist' : 'Lead'),
+            suggestedActorId: actor?.actorId || null,
+            suggestedActorName: actor?.actorName || null,
+            suggestedActorEmail: actor?.actorEmail || null
+          });
           setIsCastingModalOpen(true);
         }}
       />

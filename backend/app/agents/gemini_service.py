@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+from app.core.database import db
 import warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
@@ -28,7 +30,11 @@ except Exception as e:
     _gemini_client = None
 
 
+
+_WIKI_CACHE = {}
+
 class GeminiService:
+
     """
     High-performance AI Orchestration service powering MovieOS's role-based agents
     and the automated Screenplay Breakdown Pipeline.
@@ -39,12 +45,9 @@ class GeminiService:
     def _call_gemini_text(self, system_instruction: str, prompt: str, json_mode: bool = False) -> str:
         if _gemini_client:
             models_to_try = [
-                "gemini-1.5-flash",
-                "gemini-1.5-pro",
-                "gemini-2.0-flash",
-                "gemini-2.0-flash-lite",
-                "gemini-1.5-flash-8b",
-                "gemini-2.5-flash",
+                "gemini-flash-latest",
+                "gemini-3.6-flash",
+                "gemini-3.5-flash",
                 self.model_name
             ]
             generation_config = {"temperature": 0.3}
@@ -63,60 +66,21 @@ class GeminiService:
                         return response.text
                 except Exception as e:
                     err_str = str(e)
-                    print(f" [MovieOS Gemini] Model {m_name} note: {err_str[:120]}")
+                    print(f" [MovieOS Gemini] Model {m_name} note: {err_str[:160]}")
                     if "429" in err_str or "quota" in err_str.lower():
-                        time.sleep(0.3)
-                    continue
-
+                        break
         return ""
 
     def _fetch_actor_image(self, actor_name: str) -> str:
         """
-        Dynamically fetches the real-time official Wikipedia portrait image for ANY actor.
+        Dynamically fetches the real-time official Wikipedia portrait image using cache.
         """
-        if not actor_name or not actor_name.strip():
-            return "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80"
-            
-        clean_name = actor_name.strip()
-        encoded = urllib.parse.quote(clean_name)
-        url = f"https://en.wikipedia.org/w/api.php?action=query&titles={encoded}&prop=pageimages&format=json&pithumbsize=500"
-        req = urllib.request.Request(url, headers={'User-Agent': 'MovieOS/1.0 (contact@movieos.ai)'})
-        try:
-            res = urllib.request.urlopen(req, timeout=4)
-            data = json.loads(res.read().decode('utf-8'))
-            pages = data.get('query', {}).get('pages', {})
-            for k, v in pages.items():
-                if 'thumbnail' in v and v['thumbnail'].get('source'):
-                    return v['thumbnail']['source']
-        except Exception:
-            pass
-
-        # Try Wikipedia Search API if direct title query fails
-        try:
-            search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={encoded}&format=json"
-            req_s = urllib.request.Request(search_url, headers={'User-Agent': 'MovieOS/1.0 (contact@movieos.ai)'})
-            res_s = urllib.request.urlopen(req_s, timeout=4)
-            data_s = json.loads(res_s.read().decode('utf-8'))
-            results = data_s.get('query', {}).get('search', [])
-            if results:
-                first_title = results[0]['title']
-                encoded_t = urllib.parse.quote(first_title)
-                url_t = f"https://en.wikipedia.org/w/api.php?action=query&titles={encoded_t}&prop=pageimages&format=json&pithumbsize=500"
-                req_t = urllib.request.Request(url_t, headers={'User-Agent': 'MovieOS/1.0 (contact@movieos.ai)'})
-                res_t = urllib.request.urlopen(req_t, timeout=4)
-                data_t = json.loads(res_t.read().decode('utf-8'))
-                pages_t = data_t.get('query', {}).get('pages', {})
-                for k, v in pages_t.items():
-                    if 'thumbnail' in v and v['thumbnail'].get('source'):
-                        return v['thumbnail']['source']
-        except Exception:
-            pass
-
-        return "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80"
+        data = self._fetch_actor_live_data(actor_name)
+        return data.get("imageUrl") or "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80"
 
     def _fetch_actor_live_data(self, actor_name: str) -> Dict[str, Any]:
         """
-        Dynamically retrieves live Wikipedia API biography, portrait image, and article URL for ANY actor or actress.
+        Dynamically retrieves live Wikipedia API biography, portrait image, and article URL for ANY actor or actress with caching.
         """
         if not actor_name or not actor_name.strip():
             return {
@@ -126,51 +90,77 @@ class GeminiService:
             }
             
         clean_name = actor_name.strip()
+        cache_key = f"actor:{clean_name.lower()}"
+        if cache_key in _WIKI_CACHE:
+            return _WIKI_CACHE[cache_key]
+
         encoded = urllib.parse.quote(clean_name.replace(" ", "_"))
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{encoded}"
         req = urllib.request.Request(url, headers={'User-Agent': 'MovieOS/1.0 (contact@movieos.ai)'})
+        result = {
+            "imageUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
+            "bioSnippet": f"Acclaimed actor celebrated for dynamic cinematic performance and character dedication.",
+            "wikiUrl": f"https://en.wikipedia.org/wiki/{encoded}"
+        }
         try:
-            res = urllib.request.urlopen(req, timeout=4)
+            res = urllib.request.urlopen(req, timeout=2)
             data = json.loads(res.read().decode('utf-8'))
-            image_url = data.get("thumbnail", {}).get("source") or self._fetch_actor_image(actor_name)
+            image_url = data.get("thumbnail", {}).get("source") or data.get("originalimage", {}).get("source")
             extract = data.get("extract", "")
             wiki_url = data.get("content_urls", {}).get("desktop", {}).get("page", "")
-            return {
-                "imageUrl": image_url,
-                "bioSnippet": extract,
-                "wikiUrl": wiki_url
-            }
+            if image_url:
+                result["imageUrl"] = image_url
+            if extract:
+                result["bioSnippet"] = extract[:220] + "..." if len(extract) > 220 else extract
+            if wiki_url:
+                result["wikiUrl"] = wiki_url
         except Exception:
-            return {
-                "imageUrl": self._fetch_actor_image(actor_name),
-                "bioSnippet": f"Real-time acclaimed performer: {actor_name}.",
-                "wikiUrl": f"https://en.wikipedia.org/wiki/{encoded}"
-            }
+            pass
+
+        _WIKI_CACHE[cache_key] = result
+        return result
 
     def _fetch_location_live_data(self, location_name: str) -> Dict[str, Any]:
         """
-        Dynamically retrieves live Wikipedia API summary, image, and article URL for real-world shooting locations.
+        Dynamically retrieves live Wikipedia API summary, image, and article URL for real-world shooting locations with caching.
         """
         if not location_name or not location_name.strip():
-            return {"imageUrl": "", "description": "", "wikiUrl": ""}
+            return {"imageUrl": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=80", "description": "", "wikiUrl": ""}
             
         clean_name = location_name.strip().split(",")[0].strip()
+        cache_key = f"loc:{clean_name.lower()}"
+        if cache_key in _WIKI_CACHE:
+            return _WIKI_CACHE[cache_key]
+
         encoded = urllib.parse.quote(clean_name.replace(" ", "_"))
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{encoded}"
         req = urllib.request.Request(url, headers={'User-Agent': 'MovieOS/1.0 (contact@movieos.ai)'})
+        result = {
+            "imageUrl": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=80",
+            "description": f"Scenic cinematic shooting location offering rich architectural depth and natural lighting.",
+            "extract": f"Scenic cinematic shooting location offering rich architectural depth and natural lighting.",
+            "wikiUrl": f"https://en.wikipedia.org/wiki/{encoded}",
+            "pageUrl": f"https://en.wikipedia.org/wiki/{encoded}"
+        }
         try:
-            res = urllib.request.urlopen(req, timeout=4)
+            res = urllib.request.urlopen(req, timeout=2)
             data = json.loads(res.read().decode('utf-8'))
-            image_url = data.get("thumbnail", {}).get("source", "")
+            image_url = data.get("thumbnail", {}).get("source") or data.get("originalimage", {}).get("source")
             extract = data.get("extract", "")
             wiki_url = data.get("content_urls", {}).get("desktop", {}).get("page", "")
-            return {
-                "imageUrl": image_url,
-                "description": extract,
-                "wikiUrl": wiki_url
-            }
+            if image_url:
+                result["imageUrl"] = image_url
+            if extract:
+                result["description"] = extract[:220] + "..." if len(extract) > 220 else extract
+                result["extract"] = result["description"]
+            if wiki_url:
+                result["wikiUrl"] = wiki_url
+                result["pageUrl"] = wiki_url
         except Exception:
-            return {"imageUrl": "", "description": "", "wikiUrl": ""}
+            pass
+
+        _WIKI_CACHE[cache_key] = result
+        return result
 
     def analyze_screenplay(self, movie_id: str, script_text: str, title: str, genre: str) -> Dict[str, Any]:
         """
@@ -411,16 +401,21 @@ class GeminiService:
 
     def generate_director_intelligence(self, movie_id: str, title: str, genre: str, scenes: List[Dict[str, Any]], characters: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Generates real-time Director AI intelligence using Gemini AI including script tone analysis,
-        shooting location recommendations, and dynamic actor casting for Hero, Heroine, and Villain.
+        Generates real-time Director AI intelligence using Gemini AI and real Firestore data,
+        including script tone analysis, shooting location recommendations mapped to scenes,
+        and dynamic actor casting matched to character roles and registered platform talent.
         """
         chars = characters or []
-        sc_summary = "\n".join([f"Scene {s.get('sceneNumber')}: {s.get('heading')} - {s.get('synopsis')}" for s in scenes[:10]])
-        char_summary = ", ".join([f"{c.get('name')} ({c.get('roleType', 'Role')})" for c in chars[:5]])
+        if not chars:
+            chars = db.query_collection("characters", filters=[("movieId", "==", movie_id)])
+
+        registered_actors = db.query_collection("users", filters=[("role", "==", "ACTOR")])
+        sc_summary = "\n".join([f"Scene {s.get('sceneNumber', idx+1)}: {s.get('heading', 'EXT. LOCATION - DAY')} - {s.get('synopsis', s.get('summary', ''))}" for idx, s in enumerate(scenes[:10])])
+        char_summary = ", ".join([f"{c.get('name')} ({c.get('roleType', 'Role')}: {c.get('description', '')})" for c in chars[:6]])
 
         system_instruction = """
         You are an Oscar-winning Director and Master Casting Director in Global & Pan-Indian Cinema.
-        Analyze the provided movie details and generate real-time casting suggestions, location options, and directorial vision in strict JSON format:
+        Analyze the provided movie details, actual characters, and scenes to generate real-time casting suggestions, location options, and directorial vision in strict JSON format:
         {
           "directorialVision": "Comprehensive 3-4 sentence overview of directorial vision, visual texture, and thematic focus.",
           "signatureTone": "High visual texture and dynamic character-driven emotional arcs.",
@@ -430,72 +425,28 @@ class GeminiService:
           "castingSuggestions": [
             {
               "roleArchetype": "HERO (Protagonist)",
-              "characterName": "Protagonist Lead Character Name",
-              "requiredTraits": "Key traits required",
+              "characterName": "Actual Character Name from Script",
+              "requiredTraits": "Key dramatic traits required",
               "suggestedActors": [
                  {
-                   "actorName": "Real Acclaimed Actor 1",
+                   "actorName": "Acclaimed Actor Name",
                    "suitabilityScore": 98,
                    "pastWork": "3-4 real acclaimed films",
                    "rationale": "Directorial rationale matching this script tone and character arc"
-                 },
-                 {
-                   "actorName": "Real Acclaimed Actor 2",
-                   "suitabilityScore": 95,
-                   "pastWork": "3-4 real acclaimed films",
-                   "rationale": "Directorial rationale"
-                 }
-              ]
-            },
-            {
-              "roleArchetype": "HEROINE (Female Lead)",
-              "characterName": "Female Lead Character Name",
-              "requiredTraits": "Key traits required",
-              "suggestedActors": [
-                 {
-                   "actorName": "Real Acclaimed Actress 1",
-                   "suitabilityScore": 97,
-                   "pastWork": "3-4 real acclaimed films",
-                   "rationale": "Directorial rationale"
-                 },
-                 {
-                   "actorName": "Real Acclaimed Actress 2",
-                   "suitabilityScore": 94,
-                   "pastWork": "3-4 real acclaimed films",
-                   "rationale": "Directorial rationale"
-                 }
-              ]
-            },
-            {
-              "roleArchetype": "VILLAIN (Primary Antagonist)",
-              "characterName": "Antagonist Character Name",
-              "requiredTraits": "Key traits required",
-              "suggestedActors": [
-                 {
-                   "actorName": "Real Acclaimed Antagonist Actor 1",
-                   "suitabilityScore": 96,
-                   "pastWork": "3-4 real acclaimed films",
-                   "rationale": "Directorial rationale"
-                 },
-                 {
-                   "actorName": "Real Acclaimed Antagonist Actor 2",
-                   "suitabilityScore": 93,
-                   "pastWork": "3-4 real acclaimed films",
-                   "rationale": "Directorial rationale"
                  }
               ]
             }
           ],
           "locationSuggestions": [
              {
-               "locationName": "Scene Location Type",
-               "suggestedPlace": "Real World Recommended Location Place Name",
+               "locationName": "Real World Shooting Location Place Name",
+               "suggestedPlace": "Specific Real Landmark or Studio Set",
                "settingType": "EXT",
                "matchedSceneNumbers": [1, 2],
-               "suitabilityRating": "High (94%)",
+               "suitabilityRating": "High (95%)",
                "lightingAdvice": "Optimal light window e.g. Magic Hour 06:00 - 09:30 AM",
-               "permitRequirements": "Permit / Clearances required",
-               "estimatedRentalRate": "$1,800 / day"
+               "permitRequirements": "State Film Commission & Port Authority Clearance",
+               "estimatedRentalRate": "$2,200 / day"
              }
           ]
         }
@@ -512,13 +463,14 @@ class GeminiService:
             except Exception as e:
                 print(f" [MovieOS] Real-Time Director AI JSON parse error: {e}")
 
-        casting_suggestions = []
-        location_suggestions = []
         vision = f"Directorial vision for '{title}': High visual texture, dynamic storytelling, and grounded character arcs tailored to {genre}."
         signature_tone = f"Authentic, character-driven cinematic immersion for {title}."
         cinematography = "ARRI Alexa 65 paired with anamorphic prime lenses for high-contrast cinematic depth."
         pacing = "Calculated dolly movement and deliberate visual momentum."
-        genre_matrix = [genre, "Cinematic Drama", "Character Study"]
+        genre_matrix = [genre, "Cinematic Drama", "Character Study"] if isinstance(genre, str) else ["Drama", "Action", "Cinema"]
+
+        casting_suggestions = []
+        location_suggestions = []
 
         if parsed_ai and isinstance(parsed_ai, dict):
             vision = parsed_ai.get("directorialVision", vision)
@@ -529,141 +481,211 @@ class GeminiService:
             casting_suggestions = parsed_ai.get("castingSuggestions", [])
             location_suggestions = parsed_ai.get("locationSuggestions", [])
 
-        # Dynamic generator if AI response requires additional role structuring
-        if not casting_suggestions:
-            char1 = chars[0].get("name") if len(chars) > 0 else "Protagonist"
-            char2 = chars[1].get("name") if len(chars) > 1 else "Female Lead"
-            char3 = chars[2].get("name") if len(chars) > 2 else "Antagonist"
-            
-            casting_suggestions = [
-                {
-                    "roleArchetype": "HERO (Protagonist)",
-                    "characterName": char1,
-                    "requiredTraits": f"High emotional intensity and commanding presence for {char1}",
-                    "suggestedActors": [
-                        {"actorName": "Karthi Sivakumar", "suitabilityScore": 98, "pastWork": "Kaithi, Ponniyin Selvan, Meiyazhagan", "rationale": f"Ideal athletic intensity and emotional range for {char1}."},
-                        {"actorName": "Suriya", "suitabilityScore": 96, "pastWork": "Kanguva, Soorarai Pottru, 24", "rationale": f"Commanding screen authority and expressive gaze for {char1}."}
-                    ]
-                },
-                {
-                    "roleArchetype": "HEROINE (Female Lead)",
-                    "characterName": char2,
-                    "requiredTraits": f"Naturalistic stillness and intellectual authority for {char2}",
-                    "suggestedActors": [
-                        {"actorName": "Sai Pallavi", "suitabilityScore": 99, "pastWork": "Gargi, Amaran, Shyam Singha Roy", "rationale": f"Unmatched organic emotional depth for {char2}."},
-                        {"actorName": "Deepika Padukone", "suitabilityScore": 97, "pastWork": "Kalki 2898 AD, Padmaavat, Piku", "rationale": f"Regal stature and commanding grace for {char2}."}
-                    ]
-                },
-                {
-                    "roleArchetype": "VILLAIN (Primary Antagonist)",
-                    "characterName": char3,
-                    "requiredTraits": f"Psychological complexity and unblinking menace for {char3}",
-                    "suggestedActors": [
-                        {"actorName": "Vijay Sethupathi", "suitabilityScore": 98, "pastWork": "Vikram Vedha, Master, Maharaja", "rationale": f"Effortless threat and subtext for {char3}."},
-                        {"actorName": "Fahadh Faasil", "suitabilityScore": 97, "pastWork": "Vikram, Pushpa, Aavesham", "rationale": f"Chilling eye acting and unpredictable intensity for {char3}."}
-                    ]
-                }
+        # Dynamic character-driven casting generator
+        if not casting_suggestions or len(casting_suggestions) == 0:
+            target_chars = chars if chars else [
+                {"id": "char-1", "name": "Veera", "roleType": "Protagonist", "description": "Lead operative investigating syndicate corruption."},
+                {"id": "char-2", "name": "Mattancherry Sukumaran", "roleType": "Antagonist", "description": "Ruthless dockland kingpin."},
+                {"id": "char-3", "name": "Dr. Ananya", "roleType": "Female Lead", "description": "Forensic analyst uncovering hidden digital evidence."}
             ]
 
-        # Dynamically fetch real-time Wikipedia photos, bio snippets & URLs for ALL actors
-        for role in casting_suggestions:
-            for actor in role.get("suggestedActors", []):
-                act_name = actor.get("actorName")
-                if act_name:
-                    live_data = self._fetch_actor_live_data(act_name)
-                    actor["imageUrl"] = live_data.get("imageUrl")
-                    actor["bioSnippet"] = live_data.get("bioSnippet")
-                    actor["wikiUrl"] = live_data.get("wikiUrl")
+            casting_pool = [
+                {"name": "Karthi Sivakumar", "films": "Kaithi, Ponniyin Selvan, Meiyazhagan", "archetypes": ["HERO", "PROTAGONIST", "LEAD"]},
+                {"name": "Suriya", "films": "Kanguva, Soorarai Pottru, Jai Bhim, 24", "archetypes": ["HERO", "PROTAGONIST", "LEAD"]},
+                {"name": "Vijay Sethupathi", "films": "Vikram Vedha, Master, Maharaja, Super Deluxe", "archetypes": ["VILLAIN", "ANTAGONIST", "SUPPORTING"]},
+                {"name": "Fahadh Faasil", "films": "Aavesham, Vikram, Pushpa, Malik", "archetypes": ["VILLAIN", "ANTAGONIST", "LEAD"]},
+                {"name": "Sai Pallavi", "films": "Gargi, Amaran, Shyam Singha Roy", "archetypes": ["HEROINE", "FEMALE LEAD", "SUPPORTING"]},
+                {"name": "Nayanthara", "films": "Jawan, Connect, Maya, Raja Rani", "archetypes": ["HEROINE", "FEMALE LEAD", "LEAD"]},
+                {"name": "Kamal Haasan", "films": "Vikram, Indian, Nayakan, Dasavathaaram", "archetypes": ["MENTOR", "LEAD", "ANTAGONIST"]},
+                {"name": "Dulquer Salmaan", "films": "Lucky Baskhar, Sita Ramam, Kurup, Charlie", "archetypes": ["HERO", "PROTAGONIST", "LEAD"]}
+            ]
 
-        if not location_suggestions:
-            # Build location suggestions dynamically from scene locations
-            scene_locs = list(set([s.get("location", "Location Set") for s in scenes if s.get("location")]))
-            if not scene_locs:
-                scene_locs = ["Pinewood Soundstage A", "Coastal Harbor Outlands"]
-            for idx, loc in enumerate(scene_locs[:3]):
-                location_suggestions.append({
-                    "locationName": f"Location Beat #{idx+1}: {loc}",
-                    "suggestedPlace": loc,
-                    "settingType": "EXT" if idx % 2 == 0 else "INT",
-                    "matchedSceneNumbers": [idx + 1],
-                    "suitabilityRating": "High (96%)",
-                    "lightingAdvice": "Optimal Magic Hour (06:30 - 09:00 AM)",
-                    "permitRequirements": "Standard Regional Film Commission Clearance",
-                    "estimatedRentalRate": "$2,200 / day"
+            for idx, c in enumerate(target_chars[:5]):
+                c_name = c.get("name", f"Character #{idx+1}")
+                c_role = c.get("roleType", "Lead").upper()
+                c_desc = c.get("description", "")
+
+                matched_actors = []
+                # First, attach registered platform talent if available
+                if registered_actors and len(registered_actors) > 0:
+                    reg_act = registered_actors[idx % len(registered_actors)]
+                    matched_actors.append({
+                        "actorId": reg_act.get("id"),
+                        "actorName": reg_act.get("name", "Studio Talent"),
+                        "actorEmail": reg_act.get("email", "actor@movieos.cinema"),
+                        "suitabilityScore": 99,
+                        "pastWork": "MovieOS Verified Talent Network",
+                        "rationale": f"Registered Studio Actor ready for contract dispatch for {c_name}."
+                    })
+
+                # Then match industry icons based on role archetype
+                for actor in casting_pool:
+                    if any(arch in c_role for arch in actor["archetypes"]) or len(matched_actors) < 2:
+                        if not any(a["actorName"] == actor["name"] for a in matched_actors):
+                            matched_actors.append({
+                                "actorName": actor["name"],
+                                "suitabilityScore": 95 + ((idx + len(matched_actors)) % 4),
+                                "pastWork": actor["films"],
+                                "rationale": f"Ideal emotional range, screen presence, and character fit for {c_name} ({c_role})."
+                            })
+                    if len(matched_actors) >= 3:
+                        break
+
+                casting_suggestions.append({
+                    "characterId": c.get("id"),
+                    "roleArchetype": f"{c_role} ({c_name})",
+                    "characterName": c_name,
+                    "requiredTraits": c_desc or f"Intense dedication and commanding screen presence for {c_name}.",
+                    "suggestedActors": matched_actors
                 })
 
-        # Enrich location suggestions with real-time Wikipedia image and description
-        for loc in location_suggestions:
-            place_q = loc.get("suggestedPlace") or loc.get("locationName")
-            if place_q:
-                loc_live = self._fetch_location_live_data(place_q)
-                if loc_live.get("imageUrl"):
-                    loc["imageUrl"] = loc_live.get("imageUrl")
-                if loc_live.get("description"):
-                    loc["description"] = loc_live.get("description")
-                loc["wikiUrl"] = loc_live.get("wikiUrl")
+        # Dynamically fetch real-time Wikipedia photos & bio snippets for ALL actors in parallel
+        all_actors = [actor for role in casting_suggestions for actor in role.get("suggestedActors", []) if actor.get("actorName")]
+        if all_actors:
+            def _enrich_actor(act):
+                try:
+                    ld = self._fetch_actor_live_data(act["actorName"])
+                    act["imageUrl"] = ld.get("imageUrl")
+                    act["bioSnippet"] = ld.get("bioSnippet")
+                    act["wikiUrl"] = ld.get("wikiUrl")
+                except Exception:
+                    pass
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                list(executor.map(_enrich_actor, all_actors))
+
+        # Dynamic location suggestions based on actual screenplay scenes
+        if not location_suggestions or len(location_suggestions) == 0:
+            scene_loc_map = {}
+            for idx, sc in enumerate(scenes):
+                sc_num = sc.get("sceneNumber", idx + 1)
+                heading = sc.get("heading", f"Scene #{sc_num}")
+                setting = sc.get("setting", "INT")
+                loc = sc.get("location") or "Chennai Port Basin"
+                tone = sc.get("emotionalTone", "Dramatic")
+
+                if loc not in scene_loc_map:
+                    scene_loc_map[loc] = {
+                        "locationName": loc,
+                        "settingType": setting,
+                        "scenes": [sc_num],
+                        "headings": [heading],
+                        "tone": tone
+                    }
+                else:
+                    scene_loc_map[loc]["scenes"].append(sc_num)
+                    scene_loc_map[loc]["headings"].append(heading)
+
+            if not scene_loc_map:
+                scene_loc_map["Chennai Port Trust Container Terminal"] = {
+                    "locationName": "Chennai Port Trust Container Terminal",
+                    "settingType": "EXT",
+                    "scenes": [1],
+                    "headings": ["EXT. CHENNAI HARBOR - NIGHT"],
+                    "tone": "Tense"
+                }
+                scene_loc_map["Fort Kochi Colonial Heritage Basin"] = {
+                    "locationName": "Fort Kochi Colonial Heritage Basin",
+                    "settingType": "EXT",
+                    "scenes": [2],
+                    "headings": ["EXT. KOCHI BACKWATERS - DAWN"],
+                    "tone": "Atmospheric"
+                }
+                scene_loc_map["Prasad Film Studios Stage 4"] = {
+                    "locationName": "Prasad Film Studios Stage 4",
+                    "settingType": "INT",
+                    "scenes": [3],
+                    "headings": ["INT. SAFE HOUSE - DAY"],
+                    "tone": "Suspenseful"
+                }
+
+            for idx, (loc_key, loc_val) in enumerate(scene_loc_map.items()):
+                is_ext = loc_val["settingType"] == "EXT"
+                sc_list = loc_val["scenes"]
+                location_suggestions.append({
+                    "locationName": loc_key,
+                    "suggestedPlace": loc_key,
+                    "settingType": loc_val["settingType"],
+                    "matchedSceneNumbers": sc_list,
+                    "matchedSceneHeadings": loc_val["headings"],
+                    "suitabilityRating": f"Optimal ({95 + (idx % 4)}%)",
+                    "lightingAdvice": f"Optimal {'Magic Hour (06:00 - 08:30 AM) with natural ocean mist' if is_ext else 'Controlled 3200K Tungsten Key with High-Contrast Negative Fill'} for {loc_val['tone']} mood.",
+                    "permitRequirements": f"{'State Port Trust & Coastal Film Commission Permit' if is_ext else 'Studio Soundstage Union Clearance'}",
+                    "estimatedRentalRate": f"${2400 + (idx * 400):,.0f} / day"
+                })
+
+        # Enrich location suggestions with real-time Wikipedia photos and descriptions in parallel
+        if location_suggestions:
+            def _enrich_loc(loc):
+                try:
+                    place_q = loc.get("suggestedPlace") or loc.get("locationName")
+                    ld = self._fetch_location_live_data(place_q)
+                    loc["liveOverview"] = ld.get("extract") or ld.get("description") or f"Premier filming topography for {loc.get('locationName')}."
+                    loc["imageUrl"] = ld.get("imageUrl") or "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=80"
+                    loc["wikipediaUrl"] = ld.get("pageUrl") or ld.get("wikiUrl")
+                except Exception:
+                    pass
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                list(executor.map(_enrich_loc, location_suggestions))
 
         # Build dynamic principal casting blueprint for structured frontend rendering
         principal_blueprint = []
         for role in casting_suggestions:
             principal_blueprint.append({
-                "roleArchetype": role.get("roleArchetype", "ROLE"),
-                "characterName": role.get("characterName", "Character"),
-                "function": role.get("requiredTraits", "Performance requirement"),
+                "characterName": role.get("characterName", "Lead"),
+                "archetype": role.get("roleArchetype", "Lead"),
                 "indianCasting": [a.get("actorName") for a in role.get("suggestedActors", [])[:2]],
-                "globalCasting": [a.get("actorName") for a in role.get("suggestedActors", [])[2:]] if len(role.get("suggestedActors", [])) > 2 else [],
-                "actors": role.get("suggestedActors", [])
+                "globalCasting": [a.get("actorName") for a in role.get("suggestedActors", [])[2:]] if len(role.get("suggestedActors", [])) > 2 else []
             })
 
         return {
             "movieTitle": title,
-            "genre": genre,
-            "totalScenesAnalyzed": len(scenes),
+            "directorialVision": vision,
             "signatureTone": signature_tone,
             "cinematographyStyle": cinematography,
             "pacingRecommendation": pacing,
-            "analysis": vision,
-            "structuredInsights": {
-                "genreMatrix": genre_matrix,
-                "tonalTarget": signature_tone,
-                "conceptualArchitecture": {
-                    "narrativeStyle": f"Grounded {genre} storytelling with high emotional stakes.",
-                    "visualIdentity": cinematography
-                },
-                "principalCastingBlueprint": principal_blueprint,
-                "locationTopographyStrategy": [
-                    {
-                        "category": loc.get("locationName"),
-                        "locations": [loc.get("suggestedPlace")],
-                        "utility": loc.get("lightingAdvice"),
-                        "terrainType": loc.get("settingType"),
-                        "matchedScenes": loc.get("matchedSceneNumbers", [1])
-                    } for loc in location_suggestions
-                ],
-                "technicalDirectives": {
-                    "cameraGlass": cinematography,
-                    "cameraMovement": pacing
-                },
-                "castingSuggestions": casting_suggestions,
-                "locationSuggestions": location_suggestions
-            },
-            "criticalSceneNotes": [
+            "genreMatrix": genre_matrix,
+            "principalCastingBlueprint": principal_blueprint,
+            "locationTopographyStrategy": [
                 {
-                    "sceneNumber": s.get("sceneNumber", 1),
-                    "location": s.get("location", "Location"),
-                    "directorialNote": f"Emphasize organic atmosphere and high visual depth for {s.get('heading', 'Scene')}."
-                } for s in scenes[:5]
-            ]
+                    "category": loc.get("locationName"),
+                    "locations": [loc.get("suggestedPlace")],
+                    "lighting": loc.get("lightingAdvice"),
+                    "matchedScenes": loc.get("matchedSceneNumbers", [])
+                } for loc in location_suggestions
+            ],
+            "castingSuggestions": casting_suggestions,
+            "locationSuggestions": location_suggestions
         }
 
     def generate_producer_logistics(self, movie_id: str, title: str, total_scenes: int, budget: float, scenes: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Generates real-time market rate calculations, scene-by-scene budget breakdown,
-        department line-item burn rates, and cost optimization recommendations.
+        department line-item burn rates, and location logistics recommendations for producers.
         """
         scenes_list = scenes or []
         scene_budgets = []
         total_calc = 0.0
+
+        # Build scene location logistics for producer
+        location_clusters = {}
+        for sc in scenes_list:
+            sc_num = sc.get("sceneNumber", 1)
+            loc = sc.get("location") or "Stage 4 Soundstage"
+            setting = sc.get("setting", "INT")
+            heading = sc.get("heading", f"Scene #{sc_num}")
+            if loc not in location_clusters:
+                location_clusters[loc] = {
+                    "location": loc,
+                    "setting": setting,
+                    "scenes": [sc_num],
+                    "headings": [heading],
+                    "vfxCount": 1 if "vfx" in str(sc.get("vfxNotes", "")).lower() else 0
+                }
+            else:
+                location_clusters[loc]["scenes"].append(sc_num)
+                location_clusters[loc]["headings"].append(heading)
+                if "vfx" in str(sc.get("vfxNotes", "")).lower():
+                    location_clusters[loc]["vfxCount"] += 1
 
         for sc in scenes_list:
             sc_num = sc.get("sceneNumber", 1)
@@ -702,6 +724,38 @@ class GeminiService:
         contingency = budget * 0.10
         burn_per_day = budget / max(12, int(total_scenes * 1.2)) if total_scenes else 25000.0
 
+        # Producer Location Recommendations & Feasibility
+        producer_location_suggestions = []
+        for idx, (loc_name, cluster) in enumerate(location_clusters.items()):
+            is_ext = cluster["setting"] == "EXT"
+            sc_count = len(cluster["scenes"])
+            daily_rate = 2800.0 if is_ext else 1800.0
+            total_loc_cost = daily_rate * max(1, sc_count // 2)
+            savings_note = f"Grouping {sc_count} scenes ({', '.join([f'#{n}' for n in cluster['scenes']])}) at this location saves ${(sc_count - 1) * 3500:,.0f} in equipment turnaround & transit." if sc_count > 1 else "Standalone single-day setup."
+            
+            loc_data = {
+                "locationName": loc_name,
+                "suggestedPlace": loc_name,
+                "settingType": cluster["setting"],
+                "matchedSceneNumbers": cluster["scenes"],
+                "matchedSceneHeadings": cluster["headings"],
+                "suitabilityRating": f"High ({92 + (idx % 6)}% Feasibility)",
+                "estimatedRentalRate": f"${daily_rate:,.0f} / day",
+                "totalEstimatedLocationCost": f"${total_loc_cost:,.0f}",
+                "permitRequirements": "Regional Film Commission & Fire Safety Clearance" if is_ext else "Studio Stage Master Union Agreement",
+                "weatherRiskLevel": "MEDIUM" if is_ext else "LOW",
+                "logisticsNotes": savings_note,
+                "consolidationSavings": f"${(sc_count - 1) * 3500:,.0f}" if sc_count > 1 else "$0"
+            }
+            # Fetch Wikipedia metadata
+            loc_live = self._fetch_location_live_data(loc_name)
+            if loc_live.get("imageUrl"):
+                loc_data["imageUrl"] = loc_live.get("imageUrl")
+            if loc_live.get("description"):
+                loc_data["description"] = loc_live.get("description")
+            loc_data["wikiUrl"] = loc_live.get("wikiUrl")
+            producer_location_suggestions.append(loc_data)
+
         return {
             "movieTitle": title,
             "totalBudget": budget,
@@ -709,6 +763,7 @@ class GeminiService:
             "contingencyReserve": contingency,
             "burnRatePerDay": burn_per_day,
             "sceneBudgetBreakdown": scene_budgets,
+            "locationSuggestions": producer_location_suggestions,
             "marketRateRatesTable": {
                 "leadActorDayRate": "$3,500 - $7,500 / day",
                 "supportingActorDayRate": "$1,200 - $2,500 / day",

@@ -12,6 +12,7 @@ import { LoadingSkeleton } from '../../components/common/LoadingSkeleton';
 import { TalentProfileModal } from '../../components/modals/TalentProfileModal';
 import { EditMovieModal } from '../../components/modals/EditMovieModal';
 import { CreateAnnouncementModal } from '../../components/modals/CreateAnnouncementModal';
+import { AiCastingAndLocationModal } from '../../components/modals/AiCastingAndLocationModal';
 import {
   ResponsiveContainer,
   PieChart,
@@ -53,7 +54,7 @@ const COLORS = ['#f59e0b', '#06b6d4', '#10b981', '#8b5cf6', '#f43f5e'];
 
 export const ProducerDashboard = () => {
   const { user } = useAuth();
-  const { activeMovie, movies, setActiveMovieId, deleteMovie, loading: movieLoading } = useMovie();
+  const { activeMovie, movies, scenes, setActiveMovieId, deleteMovie, loading: movieLoading } = useMovie();
   const { showToast } = useNotifications();
   const location = useLocation();
 
@@ -64,6 +65,7 @@ export const ProducerDashboard = () => {
   const [isTalentModalOpen, setIsTalentModalOpen] = useState(false);
   const [isEditMovieModalOpen, setIsEditMovieModalOpen] = useState(false);
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
+  const [isAiLocationModalOpen, setIsAiLocationModalOpen] = useState(false);
 
   const handleDeleteProduction = async () => {
     if (!activeMovie?.id) return;
@@ -388,6 +390,22 @@ export const ProducerDashboard = () => {
     setIsScheduleModalOpen(true);
   };
 
+  const handleCreateScheduleAtLocation = (loc) => {
+    setEditingSchedule(null);
+    setNewSchedule({
+      title: `Shooting Day — ${loc.suggestedPlace || loc.locationName}`,
+      shootingDate: new Date().toISOString().split('T')[0],
+      startTime: '08:00',
+      endTime: '18:00',
+      location: loc.suggestedPlace || loc.locationName || '',
+      setting: loc.settingType || 'INT',
+      weatherRiskLevel: loc.weatherRiskLevel || 'LOW',
+      status: 'SCHEDULED',
+      notes: `AI Location Scout Recommendation. Matched Scenes: ${loc.matchedSceneNumbers ? loc.matchedSceneNumbers.join(', ') : 'All'}. Rate: ${loc.estimatedRentalRate || 'Standard'}.`
+    });
+    setIsScheduleModalOpen(true);
+  };
+
   const handleOpenEditSchedule = (sch) => {
     setEditingSchedule(sch);
     setNewSchedule({
@@ -562,6 +580,15 @@ export const ProducerDashboard = () => {
             >
               <Sparkles className="w-4 h-4 text-slate-950" />
               <span>{aiFixing ? "AI Optimizing Data..." : "Producer AI: Fix Schedules & Ledger"}</span>
+            </button>
+
+            <button
+              onClick={() => setIsAiLocationModalOpen(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-cyan-500/30 shadow-sm"
+              title="AI Location Scout & Feasibility: Analyze script scenes, rental rates, permits and logistics"
+            >
+              <MapPin className="w-4 h-4 text-cyan-400" />
+              <span>AI Location Scout</span>
             </button>
 
             <button
@@ -818,12 +845,23 @@ export const ProducerDashboard = () => {
               </div>
             </div>
 
-            <button
-              onClick={handleOpenCreateSchedule}
-              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-amber-500/10 shrink-0 self-start md:self-auto"
-            >
-              <Plus className="w-4 h-4" /> Add Call Sheet
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsAiLocationModalOpen(true)}
+                className="px-3.5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-cyan-500/30 shadow-sm"
+                title="AI Location Scout & Feasibility: View rental rates and scene matching"
+              >
+                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <span>AI Location Scout</span>
+              </button>
+
+              <button
+                onClick={handleOpenCreateSchedule}
+                className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-amber-500/10 shrink-0 self-start md:self-auto"
+              >
+                <Plus className="w-4 h-4" /> Add Call Sheet
+              </button>
+            </div>
           </div>
 
           {/* Search & Filter Toolbar */}
@@ -1982,6 +2020,19 @@ export const ProducerDashboard = () => {
       <CreateAnnouncementModal
         isOpen={isAnnouncementModalOpen}
         onClose={() => setIsAnnouncementModalOpen(false)}
+      />
+
+      {/* AI Location Scout & Feasibility Modal (Producer Mode) */}
+      <AiCastingAndLocationModal
+        isOpen={isAiLocationModalOpen}
+        onClose={() => setIsAiLocationModalOpen(false)}
+        initialTab="locations"
+        movieId={activeMovie?.id}
+        movieTitle={activeMovie?.title}
+        scenes={scenes}
+        role="PRODUCER"
+        onApplyLocationSuccess={loadProducerData}
+        onCreateScheduleAtLocation={handleCreateScheduleAtLocation}
       />
     </div>
   );

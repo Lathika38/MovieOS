@@ -77,6 +77,18 @@ class RoleAgentOrchestrator:
                     "Review reel footage focusing on continuous dialogue takes rather than fast montage clips",
                     "Issue official MovieOS Casting Request with shooting dates and character backstory attached"
                 ]
+            elif "location" in prompt.lower() or "scout" in prompt.lower() or "place" in prompt.lower() or context_type == "LOCATION_SUGGESTION":
+                analysis = f"Directorial Location Topography & Scene Scouting for '{movie_title}': Screenplay analysis reveals distinct spatial requirements ranging from intimate high-contrast interiors to expansive exterior set-pieces. Recommended filming locations have been matched to each scene's dramatic tone, optimal natural lighting window (Magic Hour vs Night Sodium Vapor), and atmospheric depth."
+                insights = {
+                    "locationPhilosophy": "Architectural realism combined with high atmospheric texture",
+                    "lightingDirectives": "Leverage natural dawn/dusk transitions for exterior scene beats",
+                    "soundstageStrategy": "Construct interior sets with removable modular wild-walls for versatile 360-degree camera dolly tracks"
+                }
+                recommendations = [
+                    "Perform location tech scouts during matching time-of-day light windows (06:00-08:30 AM for dawn exteriors)",
+                    "Lock soundstage stages with at least 35ft grid height for dynamic crane and high-angle crane setups",
+                    "Secure film commission and aerial drone clearances 3 weeks ahead of principal photography"
+                ]
             else:
                 analysis = f"Creative directorial analysis for '{movie_title}': The narrative backbone relies on maintaining consistent thematic tension. Every aesthetic choice—from wardrobe color gradation (moving from cool greys to warm amber) to soundscape dynamics—must mirror the protagonist's internal transformation across the three-act structure."
                 insights = {
@@ -112,6 +124,7 @@ class RoleAgentOrchestrator:
             "recommendations": recommendations,
             "confidenceScore": 0.98,
             "suggestedActions": [
+                {"label": "AI Location Places", "action": "OPEN_LOCATION_MODAL"},
                 {"label": "Add to Scene Notes", "action": "SAVE_SCENE_NOTE"},
                 {"label": "Issue Casting Request", "action": "OPEN_CASTING_MODAL"},
                 {"label": "Create Music Brief", "action": "CREATE_MUSIC_BRIEF"}
@@ -163,7 +176,19 @@ class RoleAgentOrchestrator:
         )
 
         if not gemini_text:
-            if has_weather_risk or "weather" in prompt.lower() or context_type == "WEATHER_CONTINGENCY":
+            if "location" in prompt.lower() or "scout" in prompt.lower() or "permit" in prompt.lower() or "rental" in prompt.lower() or context_type == "LOCATION_SUGGESTION":
+                analysis = f"Producer Location Feasibility & Cost Assessment for '{movie_title}': Screenplay scene analysis identified {len(scenes) if scenes else 0} scenes across exterior landmarks and studio stages. Consolidating scenes at shared locations reduces crew turnaround and transport costs by up to $14,000. All suggested locations have been benchmarked with current daily market rates, regional permit timelines, and weather contingency risk factors."
+                insights = {
+                    "estimatedTotalLocationBudget": f"${total_budget * 0.18:,.2f} (18% of total production budget)",
+                    "permitLeadTime": "14 - 21 Business Days for Municipal / Police Clearances",
+                    "soundstageEfficiency": "Consolidate interior dialogue setups on Stage A to save 22% on power & lighting turnaround"
+                }
+                recommendations = [
+                    "Batch-shoot all coastal/exterior scenes consecutively to avoid redundant equipment staging costs",
+                    "Submit film commission permit applications 3 weeks prior to scheduled shoot dates",
+                    "Establish signed weather contingency cover at Pinewood Stage A for all exterior shoot days"
+                ]
+            elif has_weather_risk or "weather" in prompt.lower() or context_type == "WEATHER_CONTINGENCY":
                 analysis = f"CRITICAL PRODUCTION RISK DETECTED for '{movie_title}': Scheduled exterior scenes coincide with elevated rain probability ({rain_prob}%) at {w_data.get('location', 'Location')}. Filming high-voltage lighting rigs or sensitive camera packages outdoors under these conditions creates safety hazards and risks overtime penalties ($8,500/hr union crew turnaround)."
                 insights = {
                     "identifiedThreat": f"Precipitation & High Wind at {w_data.get('location', 'Shooting Location')}",
@@ -205,10 +230,11 @@ class RoleAgentOrchestrator:
                 "Distribute revised call sheets to department leads"
             ]
 
-        # Attach real-time market rate budgeting breakdown
+        # Attach real-time market rate budgeting breakdown & location logistics
         insights["sceneBudgetBreakdown"] = producer_logistics.get("sceneBudgetBreakdown", [])
         insights["marketRateRatesTable"] = producer_logistics.get("marketRateRatesTable", {})
         insights["estimatedMarketRateTotal"] = producer_logistics.get("estimatedMarketRateTotal", total_budget)
+        insights["locationSuggestions"] = producer_logistics.get("locationSuggestions", [])
 
         return {
             "agentRole": "PRODUCER",
@@ -218,6 +244,7 @@ class RoleAgentOrchestrator:
             "recommendations": recommendations,
             "confidenceScore": 0.96,
             "suggestedActions": [
+                {"label": "AI Location Logistics", "action": "OPEN_LOCATION_LOGISTICS"},
                 {"label": "Adjust Call Sheet Schedule", "action": "OPEN_SCHEDULE_MANAGER"},
                 {"label": "Reallocate Department Budget", "action": "OPEN_BUDGET_STUDIO"},
                 {"label": "Log Production Risk", "action": "CREATE_RISK_LOG"}
