@@ -28,9 +28,30 @@ export const CreateMovieModal = ({ isOpen, onClose }) => {
     if (!formData.title.trim()) return;
     setLoading(true);
     try {
-      await createMovie(formData);
+      const payload = {
+        ...formData,
+        budget: formData.budget !== '' ? parseFloat(formData.budget) || 0 : 0,
+        startDate: formData.startDate || null,
+        endDate: formData.endDate || null,
+        releaseDate: formData.releaseDate || null
+      };
+      const created = await createMovie(payload);
       showToast(`🎬 Production '${formData.title}' created successfully!`, 'success');
       onClose();
+      // Reset form
+      setFormData({
+        title: '',
+        genre: '',
+        language: 'English',
+        logline: '',
+        synopsis: '',
+        budget: '',
+        startDate: '',
+        endDate: '',
+        releaseDate: '',
+        productionCompany: '',
+        targetAudience: ''
+      });
     } catch (err) {
       alert(`Error creating movie: ${err.message}`);
     } finally {
@@ -104,7 +125,8 @@ export const CreateMovieModal = ({ isOpen, onClose }) => {
               <input
                 type="number"
                 value={formData.budget}
-                onChange={(e) => setFormData({ ...formData, budget: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+                placeholder="0"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-slate-100 text-xs focus:border-amber-500 focus:outline-none"
               />
             </div>
